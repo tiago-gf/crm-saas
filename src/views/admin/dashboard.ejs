@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - WhatsApp AI CRM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <!-- Navigation -->
+  <nav class="bg-gray-800 shadow-md">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+      <h1 class="text-2xl font-bold text-white">🛡️ Admin Panel</h1>
+      <div class="flex items-center gap-4">
+        <span class="text-gray-300">Admin</span>
+        <button onclick="logout()" class="px-4 py-2 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition">Sair</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+      <h2 class="text-3xl font-bold text-gray-800 mb-2">Dashboard</h2>
+      <p class="text-gray-600">Visualize o uso da plataforma e gerencie seus tenants.</p>
+    </div>
+
+    <!-- Sidebar + Main -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <!-- Sidebar -->
+      <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow p-4 space-y-2">
+          <a href="/admin/dashboard" class="block w-full px-4 py-2 bg-gray-800 text-white rounded-lg font-semibold">📊 Dashboard</a>
+          <a href="/admin/tenants" class="block w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition">👥 Tenants</a>
+        </div>
+      </div>
+
+      <!-- Main -->
+      <div class="lg:col-span-4 space-y-6">
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="text-gray-500 text-sm font-semibold">Tenants Totais</div>
+            <div id="totalTenants" class="text-3xl font-bold text-gray-800 mt-2">0</div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="text-gray-500 text-sm font-semibold">Tenants Ativos</div>
+            <div id="activeTenants" class="text-3xl font-bold text-green-600 mt-2">0</div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="text-gray-500 text-sm font-semibold">Contatos Totais</div>
+            <div id="totalContacts" class="text-3xl font-bold text-blue-600 mt-2">0</div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="text-gray-500 text-sm font-semibold">Mensagens Totais</div>
+            <div id="totalMessages" class="text-3xl font-bold text-purple-600 mt-2">0</div>
+          </div>
+        </div>
+
+        <!-- Top Tenants by Usage -->
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-xl font-bold text-gray-800 mb-4">Top Tenants (por uso)</h3>
+          <div id="topTenants" class="space-y-2">
+            <p class="text-gray-500 text-center py-8">Carregando...</p>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-xl font-bold text-gray-800 mb-4">Ações Rápidas</h3>
+          <a href="/admin/tenants" class="inline-block px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition">👥 Gerenciar Tenants</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const adminToken = localStorage.getItem('adminToken');
+
+    if (!adminToken) {
+      window.location.href = '/admin/login';
+    }
+
+    async function loadDashboard() {
+      try {
+        // Load stats
+        const statsRes = await fetch('/admin/api/stats', {
+          headers: { 'X-Admin-Token': adminToken }
+        });
+        const stats = await statsRes.json();
+
+        document.getElementById('totalTenants').textContent = stats.total_tenants || 0;
+        document.getElementById('activeTenants').textContent = stats.active_tenants || 0;
+        document.getElementById('totalContacts').textContent = stats.total_contacts || 0;
+        document.getElementById('totalMessages').textContent = stats.total_messages || 0;
+
+        // Load top tenants
+        const usageRes = await fetch('/admin/api/usage', {
+          headers: { 'X-Admin-Token': adminToken }
+        });
+        const usage = await usageRes.json();
+
+        const topTenants = document.getElementById('topTenants');
+        if (usage.length === 0) {
+          topTenants.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum tenant ainda</p>';
+        } else {
+          topTenants.innerHTML = usage.slice(0, 5).map(t => `
+            <a href="/admin/tenants" class="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+              <div class="flex justify-between items-start">
+                <div>
+                  <div class="font-semibold text-gray-800">${t.name}</div>
+                  <div class="text-sm text-gray-500">${t.email}</div>
+                </div>
+                <div class="text-right">
+                  <div class="font-bold text-gray-800">${t.messages || 0}</div>
+                  <div class="text-xs text-gray-500">mensagens</div>
+                </div>
+              </div>
+            </a>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Erro ao carregar dashboard:', err);
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('adminToken');
+      window.location.href = '/admin/login';
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

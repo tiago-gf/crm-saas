@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contatos - CRM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <!-- Navigation -->
+  <nav class="bg-white shadow-md">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+      <h1 class="text-2xl font-bold text-purple-600">📱 WhatsApp AI CRM</h1>
+      <div class="flex items-center gap-4">
+        <span class="text-gray-600"><%= user.name %></span>
+        <button onclick="logout()" class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition">Sair</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <!-- Sidebar -->
+      <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow p-4 space-y-2">
+          <a href="/crm/dashboard" class="block w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition">📊 Dashboard</a>
+          <a href="/crm/contacts" class="block w-full px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-semibold">👥 Contatos</a>
+          <a href="/crm/rules" class="block w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition">🤖 Respostas</a>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="lg:col-span-4">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-3xl font-bold text-gray-800">Contatos</h2>
+          <button onclick="openNewContactModal()" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">➕ Novo Contato</button>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-6">
+          <input type="text" id="searchInput" placeholder="Buscar por nome ou telefone..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600">
+        </div>
+
+        <!-- Contacts List -->
+        <div id="contactsList" class="space-y-4">
+          <p class="text-gray-500 text-center py-8">Carregando...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Contact Modal -->
+  <div id="newContactModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+      <h3 class="text-2xl font-bold text-gray-800 mb-4">Novo Contato</h3>
+
+      <form id="newContactForm" class="space-y-4">
+        <div>
+          <label for="contactPhone" class="block text-sm font-medium text-gray-700 mb-2">Telefone (WhatsApp)</label>
+          <input type="tel" id="contactPhone" name="phone" required placeholder="+55 11 99999-9999" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600">
+        </div>
+
+        <div>
+          <label for="contactName" class="block text-sm font-medium text-gray-700 mb-2">Nome</label>
+          <input type="text" id="contactName" name="name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600">
+        </div>
+
+        <div>
+          <label for="contactEmail" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+          <input type="email" id="contactEmail" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600">
+        </div>
+
+        <div class="flex gap-2 pt-4">
+          <button type="submit" class="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Criar</button>
+          <button type="button" onclick="closeNewContactModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    let allContacts = [];
+
+    async function loadContacts() {
+      try {
+        const res = await fetch('/api/contacts', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        allContacts = await res.json();
+        renderContacts(allContacts);
+      } catch (err) {
+        console.error('Erro ao carregar contatos:', err);
+      }
+    }
+
+    function renderContacts(contacts) {
+      const list = document.getElementById('contactsList');
+      if (contacts.length === 0) {
+        list.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum contato encontrado</p>';
+      } else {
+        list.innerHTML = contacts.map(c => `
+          <a href="/crm/contacts/${c.id}" class="block bg-white rounded-lg shadow p-4 hover:shadow-md transition">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="font-semibold text-gray-800">${c.name || 'Sem nome'}</div>
+                <div class="text-sm text-gray-500">${c.phone}</div>
+                ${c.email ? `<div class="text-sm text-gray-500">${c.email}</div>` : ''}
+              </div>
+              <span class="px-3 py-1 text-xs font-semibold rounded-full ${c.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                ${c.status}
+              </span>
+            </div>
+          </a>
+        `).join('');
+      }
+    }
+
+    function openNewContactModal() {
+      document.getElementById('newContactModal').classList.remove('hidden');
+    }
+
+    function closeNewContactModal() {
+      document.getElementById('newContactModal').classList.add('hidden');
+    }
+
+    document.getElementById('newContactForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const phone = document.getElementById('contactPhone').value;
+      const name = document.getElementById('contactName').value;
+      const email = document.getElementById('contactEmail').value;
+
+      try {
+        const res = await fetch('/api/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ phone, name, email })
+        });
+
+        if (res.ok) {
+          closeNewContactModal();
+          document.getElementById('newContactForm').reset();
+          loadContacts();
+        } else {
+          const data = await res.json();
+          alert('Erro: ' + data.error);
+        }
+      } catch (err) {
+        alert('Erro ao criar contato: ' + err.message);
+      }
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const filtered = allContacts.filter(c =>
+        (c.name && c.name.toLowerCase().includes(query)) ||
+        (c.phone && c.phone.includes(query))
+      );
+      renderContacts(filtered);
+    });
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+
+    loadContacts();
+  </script>
+</body>
+</html>
