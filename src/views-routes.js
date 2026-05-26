@@ -1,107 +1,120 @@
 import express from "express";
-import { getDb } from "./db.js";
+import session from "express-session";
+import cookieParser from "cookie-parser";
+import bodyParser from "body-parser";
+import path from "path";
+import { fileURLToPath } from "url";
+import config from "./config.js";
+import { initializeDatabase, closeDatabase } from "./db.js";
+import { startWhatsApp, stopWhatsApp } from "./whatsapp.js";
 
-const router = express.Router();
+// Routes
+import authRoutes from "./auth-routes.js";
+import apiRoutes from "./api.js";
+import adminRoutes from "./admin-routes.js";
+import viewsRoutes from "./views-routes.js";
 
-// ===== CRM PAGES =====
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Dashboard
-router.get("/", (req, res) => {
-  if (req.session?.user) {
-    return res.redirect("/crm/dashboard");
-  }
-  res.redirect("/login");
+const app = express();
+
+// View engine
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+
+// Middleware
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, "../public")));
+
+// Session
+app.use(
+  session({
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: config.nodeEnv === "production",
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    },
+  })
+);
+
+// CORS
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Admin-Token"
+  );
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH");
+  next();
 });
 
-// Login page
-router.get("/login", (req, res) => {
-  if (req.session?.user) {
-    return res.redirect("/crm/dashboard");
-  }
-  res.render("login");
+// Routes
+app.use(viewsRoutes);
+app.use("/auth", authRoutes);
+app.use("/api", apiRoutes);
+app.use("/admin/api", adminRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).render("404", { path: req.path });
 });
 
-// Register page
-router.get("/register", (req, res) => {
-  if (req.session?.user) {
-    return res.redirect("/crm/dashboard");
-  }
-  res.render("register");
-});
-
-// CRM Dashboard
-router.get("/crm/dashboard", (req, res) => {
-  if (!req.session?.user) {
-    return res.redirect("/login");
-  }
-
-  res.render("crm/dashboard", { user: req.session.user });
-});
-
-// Contacts page
-router.get("/crm/contacts", (req, res) => {
-  if (!req.session?.user) {
-    return res.redirect("/login");
-  }
-
-  res.render("crm/contacts", { user: req.session.user });
-});
-
-// Contact detail
-router.get("/crm/contacts/:id", (req, res) => {
-  if (!req.session?.user) {
-    return res.redirect("/login");
-  }
-
-  res.render("crm/contact-detail", { user: req.session.user, contactId: req.params.id });
-});
-
-// Rules page
-router.get("/crm/rules", (req, res) => {
-  if (!req.session?.user) {
-    return res.redirect("/login");
-  }
-
-  res.render("crm/rules", { user: req.session.user });
-});
-
-// ===== ADMIN PAGES =====
-
-// Admin login
-router.get("/admin/login", (req, res) => {
-  if (req.session?.adminToken) {
-    return res.redirect("/admin/dashboard");
-  }
-  res.render("admin/login");
-});
-
-// Admin dashboard
-router.get("/admin/dashboard", (req, res) => {
-  if (!req.session?.adminToken) {
-    return res.redirect("/admin/login");
-  }
-
-  res.render("admin/dashboard");
-});
-
-// Admin tenants page
-router.get("/admin/tenants", (req, res) => {
-  if (!req.session?.adminToken) {
-    return res.redirect("/admin/login");
-  }
-
-  res.render("admin/tenants");
-});
-
-// ===== API TEST =====
-
-// API Status
-router.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    version: "1.0.0",
+// Error handler
+app.use((err, req, res, next) => {
+  console.error("❌ Error:", err);
+  res.status(err.status || 500).json({
+    error: err.message || "Internal server error",
   });
 });
 
-export default router;
+// ===== STARTUP =====
+
+const server = app.listen(config.port, "0.0.0.0", async () => {
+  console.log(`\n🚀 Server running on ${config.baseUrl}`);
+  console.log(`📁 Environment: ${config.nodeEnv}`);
+  console.log(`💾 Database: ${config.dbType}`);
+
+  try {
+    // Initialize database
+    await initializeDatabase();
+
+    // Start WhatsApp
+    if (config.whatsappEnabled) {
+      startWhatsApp();
+    }
+
+    console.log("\n✅ WhatsApp AI CRM is ready!\n");
+    console.log("📍 CRM:        http://localhost:3000/login");
+    console.log("📍 Admin:      http://localhost:3000/admin/login");
+    console.log("📍 API Health: http://localhost:3000/api/health\n");
+  } catch (err) {
+    console.error("❌ Startup error:", err);
+    process.exit(1);
+  }
+});
+
+// ===== GRACEFUL SHUTDOWN =====
+
+process.on("SIGINT", async () => {
+  console.log("\n🛑 Shutting down gracefully...");
+
+  try {
+    await stopWhatsApp();
+    await closeDatabase();
+    server.close(() => {
+      console.log("✅ Server closed");
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error("❌ Error during shutdown:", err);
+    process.exit(1);
+  }
+});
+
+export default app;
