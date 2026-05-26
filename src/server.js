@@ -75,7 +75,7 @@ app.use((err, req, res, next) => {
 
 // ===== STARTUP =====
 
-const server = app.listen(config.port, async () => {
+const server = app.listen(config.port, "0.0.0.0", async () => {
   console.log(`\n🚀 Server running on ${config.baseUrl}`);
   console.log(`📁 Environment: ${config.nodeEnv}`);
   console.log(`💾 Database: ${config.dbType}`);
