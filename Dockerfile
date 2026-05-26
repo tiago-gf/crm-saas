@@ -1,23 +1,22 @@
-FROM node:18-alpine
+FROM node:18
+
+RUN apt-get update && apt-get install -y \
+  chromium \
+  fonts-liberation \
+  libappindicator3-1 \
+  xdg-utils \
+  ca-certificates
 
 WORKDIR /app
 
-# Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
 
-# Copy application
+RUN npm install
+
 COPY . .
 
-# Create data directory
-RUN mkdir -p data
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Start application
 CMD ["node", "src/server.js"]
