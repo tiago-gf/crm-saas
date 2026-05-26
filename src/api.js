@@ -252,4 +252,16 @@ router.delete(
   }
 );
 
+import { getWhatsAppQR } from "./whatsapp.js";
+
+router.get("/whatsapp/qr", (req, res) => {
+  const qr = getWhatsAppQR();
+
+  if (!qr) {
+    return res.json({ status: "waiting" });
+  }
+
+  res.json({ qr });
+});
+
 export default router;

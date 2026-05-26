@@ -1,18 +1,19 @@
-import { Client } from "whatsapp-web.js";
+import { Client, LocalAuth } from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 import { processMessage } from "./router.js";
 import { getDb } from "./db.js";
 import config from "./config.js";
-import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
 let whatsappClient = null;
 let clientReady = false;
+let latestQR = null;
 
-// Inicializar WhatsApp (estrutura obrigatória do usuário)
+// ===== START WHATSAPP =====
 export function startWhatsApp() {
   if (!config.whatsappEnabled) {
-    console.log("⚠️  WhatsApp is disabled");
+    console.log("⚠️ WhatsApp desativado");
     return;
   }
 
@@ -20,88 +21,102 @@ export function startWhatsApp() {
     return whatsappClient;
   }
 
-  const sessionPath = path.join(config.whatsappSessionPath, "session.json");
-
   whatsappClient = new Client({
+    authStrategy: new LocalAuth({
+      dataPath: config.whatsappSessionPath || "./sessions",
+    }),
     puppeteer: {
-      args: ["--no-sandbox"],
-      timeout: config.whatsappTimeout,
-    },
-    session: {
-      path: sessionPath,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      timeout: config.whatsappTimeout || 60000,
     },
   });
 
-  // QR Code display
-  whatsappClient.on("qr", (qr) => {
-    console.log("\n📱 WhatsApp QR Code gerado. Escaneie com seu WhatsApp:");
+  // ===== QR CODE =====
+  whatsappClient.on("qr", async (qr) => {
+    console.log("\n📱 WhatsApp QR Code (terminal):");
     qrcode.generate(qr, { small: true });
+
+    try {
+      latestQR = await QRCode.toDataURL(qr);
+    } catch {
+      latestQR = null;
+    }
   });
 
-  // Connection ready
+  // ===== READY =====
   whatsappClient.on("ready", () => {
     clientReady = true;
     console.log("✅ WhatsApp conectado com sucesso");
   });
 
-  // Message handler (estrutura obrigatória)
+  // ===== MESSAGE HANDLER =====
   whatsappClient.on("message", async (msg) => {
     try {
       console.log(`📨 Mensagem recebida: ${msg.body}`);
 
-      // Para MVP, processar com tenant ID padrão
-      // Em produção, você teria múltiplas instâncias ou um mapeamento
-      const defaultTenantId = await getDefaultTenantId();
+      const tenantId = await getDefaultTenantId();
 
-      if (!defaultTenantId) {
-        console.log("⚠️  Nenhum tenant configurado");
+      if (!tenantId) {
+        console.log("⚠️ Nenhum tenant ativo");
         return;
       }
 
-      const result = await processMessage(msg, defaultTenantId);
+      const result = await processMessage(msg, tenantId);
 
-      // Responder (estrutura obrigatória)
-      msg.reply(result.reply);
+      await msg.reply(result.reply);
       console.log("✅ Resposta enviada");
     } catch (err) {
-      console.error("❌ Erro ao processar mensagem:", err);
-      msg.reply("❌ Erro ao processar mensagem");
+      console.error("❌ Erro ao processar mensagem:", err.message);
     }
   });
 
-  // Disconnect handler
+  // ===== DISCONNECT =====
   whatsappClient.on("disconnected", () => {
     clientReady = false;
     console.log("❌ WhatsApp desconectado");
   });
 
-  // Error handler
+  // ===== ERROR =====
   whatsappClient.on("error", (err) => {
-    console.error("⚠️  Erro no WhatsApp:", err.message);
+    console.error("⚠️ Erro no WhatsApp:", err.message);
   });
 
-  // Initialize
+  // ===== INIT =====
   console.log("🚀 Inicializando WhatsApp...");
-  try {
-    whatsappClient.initialize();
-  } catch (err) {
-    console.error("⚠️  Não foi possível inicializar WhatsApp:", err.message);
-    console.log("   Dica: Certifique-se de que tem dependências do navegador instaladas");
-  }
+  whatsappClient.initialize();
 
   return whatsappClient;
 }
 
-// Obter tenant padrão (para MVP com single WhatsApp instance)
-async function getDefaultTenantId() {
-  const db = await getDb();
-  const tenant = await db.get(
-    `SELECT id FROM tenants WHERE status = 'active' LIMIT 1`
-  );
-  return tenant?.id;
+// ===== GET QR (API) =====
+export function getWhatsAppQR() {
+  return latestQR;
 }
 
-// Parar WhatsApp
+// ===== STATUS =====
+export function isWhatsAppReady() {
+  return clientReady;
+}
+
+// ===== GET CLIENT =====
+export function getWhatsAppClient() {
+  return whatsappClient;
+}
+
+// ===== SEND MESSAGE =====
+export async function sendWhatsAppMessage(phoneNumber, message) {
+  if (!clientReady) {
+    throw new Error("WhatsApp não conectado");
+  }
+
+  const chatId = `${phoneNumber}@c.us`;
+  await whatsappClient.sendMessage(chatId, message);
+
+  return { success: true };
+}
+
+// ===== STOP =====
 export async function stopWhatsApp() {
   if (whatsappClient) {
     await whatsappClient.destroy();
@@ -111,34 +126,23 @@ export async function stopWhatsApp() {
   }
 }
 
-// Obter cliente WhatsApp
-export function getWhatsAppClient() {
-  return whatsappClient;
+// ===== TENANT (MVP) =====
+async function getDefaultTenantId() {
+  const db = await getDb();
+
+  const tenant = await db.get(
+    `SELECT id FROM tenants WHERE status = 'active' LIMIT 1`
+  );
+
+  return tenant?.id;
 }
 
-// Verificar status
-export function isWhatsAppReady() {
-  return clientReady;
-}
-
-// Enviar mensagem para contato
-export async function sendWhatsAppMessage(phoneNumber, message) {
-  if (!clientReady) {
-    throw new Error("WhatsApp not connected");
-  }
-
-  try {
-    const chatId = `${phoneNumber}@c.us`;
-    await whatsappClient.sendMessage(chatId, message);
-    return { success: true, message: "Message sent" };
-  } catch (err) {
-    console.error("Error sending message:", err);
-    throw err;
-  }
-}
-
-// Atualizar status da sessão WhatsApp no DB
-export async function updateWhatsAppSession(tenantId, phoneNumber, status) {
+// ===== UPDATE SESSION =====
+export async function updateWhatsAppSession(
+  tenantId,
+  phoneNumber,
+  status
+) {
   const db = await getDb();
 
   const existing = await db.get(
@@ -148,13 +152,15 @@ export async function updateWhatsAppSession(tenantId, phoneNumber, status) {
 
   if (existing) {
     await db.run(
-      `UPDATE whatsapp_sessions SET phone_number = ?, status = ?, last_connected = CURRENT_TIMESTAMP 
+      `UPDATE whatsapp_sessions 
+       SET phone_number = ?, status = ?, last_connected = CURRENT_TIMESTAMP 
        WHERE tenant_id = ?`,
       [phoneNumber, status, tenantId]
     );
   } else {
     await db.run(
-      `INSERT INTO whatsapp_sessions (id, tenant_id, phone_number, status) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO whatsapp_sessions (id, tenant_id, phone_number, status) 
+       VALUES (?, ?, ?, ?)`,
       [uuidv4(), tenantId, phoneNumber, status]
     );
   }
