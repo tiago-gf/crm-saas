@@ -5,6 +5,7 @@ services:
     build: .
     ports:
       - "3000:3000"
+
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -17,7 +18,10 @@ services:
       ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: admin123
       ADMIN_SECRET: admin_secret
+
     volumes:
-      - ./data:/app/data   ✅ somente banco
+      - /data/coolify/applications/bp9h1rr67n2jctgqa24ys48g/data:/app/data
+      - /data/coolify/applications/bp9h1rr67n2jctgqa24ys48g/sessions:/app/sessions
+
     command: npm start
     restart: always
