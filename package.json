@@ -6,7 +6,6 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
     "db:init": "node scripts/init-db.js",
     "setup": "npm install && npm run db:init"
   },
