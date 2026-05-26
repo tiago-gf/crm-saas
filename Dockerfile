@@ -14,7 +14,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Instala dependências
-RUN npm install
+RUN npm install --force
 
 # Copia resto do projeto
 COPY . .
